@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+npm-debug.log*
+*.log
+logs/
+tmp/
+temp/
+coverage/
+.release/
+.DS_Store

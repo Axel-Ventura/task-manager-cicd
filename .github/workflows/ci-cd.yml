@@ -1,0 +1,77 @@
+name: Task Manager CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - name: Prepare isolated release environment
+        run: npm run release:prepare
+      - name: Test isolated release environment
+        run: npm run release:test
+      - name: Build release artifact
+        run: npm run release:build
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .release/staging/coverage
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: true
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-manager-release
+          path: .release/artifact
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: true
+
+  deploy:
+    name: Deploy production
+    needs: release
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: task-manager-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+      - name: Trigger Render deployment
+        run: npm run deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          GITHUB_SHA: ${{ github.sha }}
+      - name: Verify production health
+        run: npm run deploy:verify
+        env:
+          APP_URL: ${{ vars.APP_URL }}
